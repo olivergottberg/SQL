@@ -1,0 +1,617 @@
+#Oliver Gottberg
+
+/*
+CREATE DATABASE DB2_SQL_L6;
+USE DB2_SQL_L6;
+*/
+
+/*
+DROP TABLE IF EXISTS customers;
+DROP TABLE IF EXISTS orders;
+DROP TABLE IF EXISTS items;
+DROP TABLE IF EXISTS categories;
+DROP TABLE IF EXISTS logs;
+DROP TABLE IF EXISTS orders_items;
+DROP TABLE IF EXISTS item_category;
+DROP TABLE IF EXISTS employees;
+DROP TABLE IF EXISTS invoices;
+
+CREATE TABLE customers (
+id INT PRIMARY KEY AUTO_INCREMENT NOT NULL,
+email VARCHAR(50) UNIQUE NOT NULL,
+name VARCHAR(50) NOT NULL,
+city VARCHAR(50) NOT NULL
+);
+
+CREATE TABLE orders (
+number INT PRIMARY KEY AUTO_INCREMENT NOT NULL,
+status ENUM ("open", "processing", "sent", "arrived at customer") NOT NULL DEFAULT "open",
+created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+sent DATETIME DEFAULT NULL,
+customer_id INT NOT NULL,
+FOREIGN KEY (customer_id) REFERENCES customers(id)
+ON DELETE RESTRICT -- Restrict för att inte kunna ta bort en kund som har beställning, cascade för att uppdatera vid ändringar
+ON UPDATE CASCADE
+);
+
+CREATE TABLE items (
+number INT PRIMARY KEY AUTO_INCREMENT NOT NULL,
+name VARCHAR(50) NOT NULL,
+stock INT NOT NULL,
+price DECIMAL (10,2) NOT NULL
+);
+
+CREATE TABLE categories (
+id INT PRIMARY KEY AUTO_INCREMENT NOT NULL,
+name VARCHAR(50) UNIQUE NOT NULL
+);
+
+CREATE TABLE logs (
+id INT PRIMARY KEY AUTO_INCREMENT NOT NULL,
+created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+item_number INT NOT NULL,
+FOREIGN KEY (item_number) REFERENCES items(number)
+ON DELETE CASCADE -- Loggar tas bort om en produkt tas bort, uppdateras om item_number uppdateras
+ON UPDATE CASCADE
+);
+
+CREATE TABLE orders_items (
+order_number INT NOT NULL,
+item_number INT NOT NULL,
+quantity INT NOT NULL,
+PRIMARY KEY (order_number, item_number), -- Sammansatt primärnyckel gör att vi inte får samma ordernummer med samma varunummer på flera platser
+FOREIGN KEY (order_number) REFERENCES orders(number)
+ON DELETE RESTRICT -- Kan inte ta bort en beställning
+ON UPDATE CASCADE, 
+FOREIGN KEY (item_number) REFERENCES items(number)
+ON DELETE RESTRICT -- Kan inte ta bort en vara om den finns i en beställning
+ON UPDATE CASCADE
+);
+
+CREATE TABLE item_category (
+item_number INT NOT NULL,
+category_id INT NOT NULL,
+FOREIGN KEY (item_number) REFERENCES items(number)
+ON DELETE CASCADE -- Om en produkt tas bort tas kopplingen till kategori bort
+ON UPDATE CASCADE,
+FOREIGN KEY (category_id) REFERENCES categories(id)
+ON DELETE CASCADE -- Om en kategori tas bort tas kopplingen till produkt bort
+ON UPDATE CASCADE
+);
+
+-- EGEN UTÖKNING --
+
+CREATE TABLE employees (
+id INT PRIMARY KEY AUTO_INCREMENT,
+name VARCHAR(50) NOT NULL,
+salary INT,
+phone VARCHAR(50) NOT NULL
+);
+
+-- En tabell för anställda, en anställd kan kopplas till en faktura (som kontaktperson)
+
+CREATE TABLE invoices (
+id INT PRIMARY KEY AUTO_INCREMENT,
+order_number INT NOT NULL,
+customer_id INT NOT NULL,
+amount DECIMAL (10,2) NOT NULL CHECK (amount >= 0),
+employee_id INT NOT NULL,
+FOREIGN KEY (customer_id) REFERENCES customers(id)
+ON DELETE RESTRICT -- Faktura raderas inte om kunden raderas
+ON UPDATE CASCADE,
+FOREIGN KEY (order_number) REFERENCES orders(number)
+ON DELETE CASCADE -- Om en beställning tas bort tas fakturan bort
+ON UPDATE CASCADE,
+FOREIGN KEY (employee_id) REFERENCES employees(id)
+ON DELETE RESTRICT -- En anställd kan inte tas bort om de är kopplade till en beställning
+ON UPDATE CASCADE
+);
+
+-- Fakturor, innehåller FKs till kundnummer och beställningnummer samt har en anställd kopplad till fakturan som kontaktperson.
+*/
+#Q1 - Skapa databasen och egen utökning
+
+/*
+DROP PROCEDURE IF EXISTS insert_customers;
+DROP PROCEDURE IF EXISTS insert_orders;
+DROP PROCEDURE IF EXISTS insert_items;
+DROP PROCEDURE IF EXISTS insert_categories;
+DROP PROCEDURE IF EXISTS insert_logs;
+DROP PROCEDURE IF EXISTS insert_orders_items;
+DROP PROCEDURE IF EXISTS insert_item_category;
+DROP PROCEDURE IF EXISTS insert_employees;
+DROP PROCEDURE IF EXISTS insert_invoices;
+
+DELIMITER //
+
+CREATE PROCEDURE insert_customers (in_email VARCHAR(50), in_name VARCHAR(50), in_city VARCHAR(50))
+BEGIN
+    INSERT INTO customers (email, name, city)
+    VALUES (in_email, in_name, in_city);
+END //
+
+CREATE PROCEDURE insert_orders (in_status VARCHAR(50), in_sent DATETIME, in_customer_id INT)
+BEGIN
+    IF in_status NOT IN ('open', 'processing', 'sent', 'arrived at customer') THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Error: Invalid status value';
+    END IF;
+    
+    INSERT INTO orders (status, sent, customer_id)
+    VALUES (in_status, in_sent, in_customer_id);
+END //
+
+CREATE PROCEDURE insert_items (in_name VARCHAR(50), in_stock INT, in_price DECIMAL(10,2))
+BEGIN
+	INSERT INTO items (name, stock, price)
+    VALUES (in_name, in_stock, in_price);
+END //
+
+CREATE PROCEDURE insert_categories (in_name VARCHAR(50))
+BEGIN
+	INSERT INTO categories (name)
+    VALUES (in_name);
+END //
+
+CREATE PROCEDURE insert_logs (in_item_number INT)
+BEGIN
+	INSERT INTO logs (item_number)
+    VALUES (in_item_number);
+END //
+
+CREATE PROCEDURE insert_orders_items (in_order_number INT, in_item_number INT, in_quantity INT)
+BEGIN
+	INSERT INTO orders_items (order_number, item_number, quantity)
+    VALUES (in_order_number, in_item_number, in_quantity);
+END //
+
+CREATE PROCEDURE insert_item_category (in_item_number INT, in_category_id INT)
+BEGIN
+	INSERT INTO item_category (item_number, category_id)
+    VALUES (in_item_number, in_category_id);
+END //
+
+CREATE PROCEDURE insert_employees (in_name VARCHAR(50), in_salary INT, in_phone VARCHAR(50)) 
+BEGIN
+	INSERT INTO employees (name, salary, phone)
+    VALUES (in_name, in_salary, in_phone);
+END //
+
+CREATE PROCEDURE insert_invoices (in_order_number INT, in_customer_id INT, in_amount DECIMAL (10,2), in_employee_id INT) 
+BEGIN
+	INSERT INTO invoices (order_number, customer_id, amount, employee_id)
+    VALUES (in_order_number, in_customer_id, in_amount, in_employee_id);
+END //
+DELIMITER ;
+
+CALL insert_customers('anna@example.com', 'Anna Svensson', 'Stockholm');
+CALL insert_customers('erik@example.com', 'Erik Andersson', 'Göteborg');
+CALL insert_customers('lisa@example.com', 'Lisa Karlsson', 'Malmö');
+CALL insert_customers('mikael@example.com', 'Mikael Johansson', 'Uppsala');
+CALL insert_customers('sofia@example.com', 'Sofia Eriksson', 'Västerås');
+CALL insert_customers('daniel@example.com', 'Daniel Nilsson', 'Örebro');
+CALL insert_customers('emma@example.com', 'Emma Lindgren', 'Linköping');
+CALL insert_customers('oskar@example.com', 'Oskar Berg', 'Helsingborg');
+
+CALL insert_categories('Smärtstillande');
+CALL insert_categories('Allergimedicin');
+CALL insert_categories('Hudvård');
+CALL insert_categories('Vitaminer & Kosttillskott');
+CALL insert_categories('Förkylning & Immunförsvar');
+
+CALL insert_items('Alvedon 500mg', 100, 59);
+CALL insert_items('Ipren 400mg', 80, 75);
+CALL insert_items('Zyrlex 10mg', 50, 120);
+CALL insert_items('Bepanthen Salva', 30, 89);
+CALL insert_items('D-vitamin 1000 IE', 150, 99);
+CALL insert_items('Kan Jang', 60, 149);
+CALL insert_items('Nezeril Nässpray', 90, 79);
+CALL insert_items('Magnesium 250mg', 200, 79);
+CALL insert_items('Voltaren Gel', 40, 129);
+CALL insert_items('Laktasenzym', 70, 199);
+
+CALL insert_item_category(1, 1);
+CALL insert_item_category(2, 1);
+CALL insert_item_category(3, 2);
+CALL insert_item_category(4, 3);
+CALL insert_item_category(5, 4);
+CALL insert_item_category(6, 5);
+CALL insert_item_category(7, 5);
+CALL insert_item_category(8, 4);
+CALL insert_item_category(9, 1);
+CALL insert_item_category(10, 2);
+
+CALL insert_orders('open', NULL, 1);
+CALL insert_orders('processing', '2024-02-20 14:30:00', 2);
+CALL insert_orders('sent', '2024-02-19 10:15:00', 3);
+CALL insert_orders('open', NULL, 4);
+CALL insert_orders('processing', '2024-02-18 16:45:00', 5);
+CALL insert_orders('sent', '2024-02-17 11:00:00', 6);
+CALL insert_orders('arrived at customer', '2024-02-16 09:30:00', 7);
+CALL insert_orders('open', NULL, 8);
+CALL insert_orders('processing', '2024-02-15 12:20:00', 1);
+CALL insert_orders('sent', '2024-02-14 08:10:00', 2);
+
+CALL insert_orders_items(1, 1, 2);
+CALL insert_orders_items(1, 3, 1);
+CALL insert_orders_items(2, 2, 3);
+CALL insert_orders_items(2, 5, 2);
+CALL insert_orders_items(3, 7, 1);
+CALL insert_orders_items(4, 4, 2);
+CALL insert_orders_items(5, 8, 4);
+CALL insert_orders_items(6, 6, 1);
+CALL insert_orders_items(7, 9, 2);
+CALL insert_orders_items(8, 10, 3); 
+CALL insert_orders_items(9, 1, 1);
+CALL insert_orders_items(10, 2, 2); 
+
+CALL insert_employees('Karin Lund', 35000, '0701234567');
+CALL insert_employees('Johan Persson', 32000, '0709876543');
+CALL insert_employees('Sara Eriksson', 33000, '0705647382');
+CALL insert_employees('Fredrik Olsson', 31000, '0708392746');
+
+CALL insert_invoices(3, 3, 120.00, 1);
+CALL insert_invoices(5, 5, 516.00, 4);
+CALL insert_invoices(6, 6, 149.00, 2);
+CALL insert_invoices(7, 7, 258.00, 3);
+CALL insert_invoices(10, 2, 150.00, 4);
+
+CALL insert_logs(1);
+CALL insert_logs(2);
+CALL insert_logs(3);
+CALL insert_logs(4);
+CALL insert_logs(5);
+CALL insert_logs(6);
+CALL insert_logs(7);
+CALL insert_logs(8);
+CALL insert_logs(9);
+CALL insert_logs(10);
+CALL insert_logs(1);
+CALL insert_logs(2);
+CALL insert_logs(3);
+CALL insert_logs(4);
+CALL insert_logs(5);
+CALL insert_logs(6);
+CALL insert_logs(7);
+CALL insert_logs(8);
+CALL insert_logs(9);
+CALL insert_logs(10);
+CALL insert_logs(1);
+CALL insert_logs(2);
+CALL insert_logs(3);
+*/
+#Q2 - Procedures för att lägga in data och anrop till procedures
+
+/*
+DROP PROCEDURE IF EXISTS show_item;
+DROP PROCEDURE IF EXISTS item_log;
+
+DELIMITER //
+
+CREATE PROCEDURE show_item (in_number INT)
+BEGIN
+	SELECT * FROM items WHERE number = in_number;
+    CALL item_log(in_number);
+END //
+
+CREATE PROCEDURE item_log (in_number INT)
+BEGIN
+	CALL insert_logs(in_number);
+END //
+DELIMITER ;
+
+CALL show_item(1);
+CALL show_item(7);
+*/
+#Q3 - Procedures för att visa en vara och för att logga att en vara visats
+
+/*
+DROP VIEW IF EXISTS hot_items;
+
+CREATE VIEW hot_items AS SELECT
+	logs.item_number, 
+    i.name, 
+    COUNT(logs.item_number) AS view_count
+FROM (
+    SELECT item_number
+    FROM logs
+    ORDER BY id DESC
+    LIMIT 500
+) AS logs
+JOIN items i ON logs.item_number = i.number
+GROUP BY logs.item_number, i.name
+ORDER BY view_count DESC
+LIMIT 3;
+*/
+#Q4 - Vy som visar de tre mest visade varorna
+
+/*
+DROP PROCEDURE IF EXISTS add_item_to_order;
+
+DELIMITER //
+
+CREATE PROCEDURE add_item_to_order (in_order_id INT, in_item_id INT, in_no_of_items INT)
+BEGIN
+	DECLARE available_inventory INT;
+    DECLARE max_items_possible INT;
+    DECLARE remaining_stock INT;
+    
+	SELECT stock INTO available_inventory
+    FROM items
+    WHERE in_item_id = number;
+    
+    SET max_items_possible = LEAST(in_no_of_items, available_inventory); -- Välj det minsta möjliga, antingen efterfrågat antal varor eller så många som finns tillgängligt
+
+	INSERT INTO orders_items (order_number, item_number, quantity)
+	VALUES (in_order_id, in_item_id, max_items_possible)
+	ON DUPLICATE KEY UPDATE quantity = quantity + max_items_possible; -- Om kombinationen av ordernummer och varunummer redan finns så uppdateras antalet, annars skapas en ny rad
+    
+    UPDATE items
+    SET stock = stock - max_items_possible
+    WHERE number = in_item_id;
+    
+    SELECT stock INTO remaining_stock 
+    FROM items 
+    WHERE in_item_id = number;
+    
+    IF max_items_possible < in_no_of_items THEN
+		SELECT CONCAT("Warning, only ", max_items_possible, " items were added due to low stock.") AS message;
+	ELSE
+		SELECT "Success, all items were added to order." AS message;
+	END IF;
+    
+    IF remaining_stock <= 5 THEN
+		SELECT CONCAT("Warning, only ", remaining_stock, " of item ", in_item_id, " remaining.") AS message;
+	END IF;
+END //
+DELIMITER ;
+
+SELECT * FROM orders_items WHERE order_number = 1; -- Test som lägger till 50st. Uppdaterar befintlig rad
+CALL add_item_to_order(1, 1, 50);
+SELECT * FROM orders_items WHERE order_number = 1;
+
+SELECT * FROM orders_items WHERE order_number = 9; -- Test som lägger till fler varor än vad som finns, uppdaterar befintlig rad
+CALL add_item_to_order(9, 1, 100);
+SELECT * FROM orders_items WHERE order_number = 9;
+
+CALL add_item_to_order(9, 3, 2); -- Test som skapar ny rad
+*/
+#Q5 - Procedure som lägger till en vara i en order. Ökar antalet om kombinationen av order och vara redan finns anars skapas ny rad
+
+/*
+DROP PROCEDURE IF EXISTS remove_item_from_order;
+
+DELIMITER //
+
+CREATE PROCEDURE remove_item_from_order (in_order_id INT, in_item_id INT, in_no_of_items INT)
+BEGIN
+	DECLARE current_order_quantity INT;
+    
+    SELECT quantity INTO current_order_quantity 
+    FROM orders_items 
+    WHERE order_number = in_order_id AND item_number = in_item_id;
+    
+    IF in_no_of_items >= current_order_quantity THEN
+		DELETE FROM orders_items 
+        WHERE order_number = in_order_id AND item_number = in_item_id;
+        SELECT CONCAT("All ", current_order_quantity, " available of item number ", in_item_id, " were removed successfully from order.") AS message;
+	ELSE 
+		UPDATE orders_items 
+        SET quantity = quantity - in_no_of_items
+		WHERE order_number = in_order_id AND item_number = in_item_id;
+        SELECT CONCAT("Successfully removed ", in_no_of_items, " items from order.") AS message;
+	END IF;
+    
+    UPDATE items
+    SET stock = stock + in_no_of_items
+    WHERE number = in_item_id;
+END //
+DELIMITER ;
+
+SELECT * FROM orders_items WHERE order_number = 1; -- Tester som återställer tabellen till hur den var innan
+CALL remove_item_from_order(1, 1, 50);
+SELECT * FROM orders_items WHERE order_number = 1;
+
+SELECT * FROM orders_items WHERE order_number = 9; -- Den här queryn och den över ändrar antalet varor men behåller ordern
+CALL remove_item_from_order(9, 1, 50);
+SELECT * FROM orders_items WHERE order_number = 9;
+
+CALL remove_item_from_order(9, 3, 2); 
+SELECT * FROM orders_items WHERE order_number = 9; -- Den här tar bort hela raden eftersom alla varor i ordern tas bort
+*/
+#Q6 - Procedure som tar bort vara från order och tester som återställer tabellen till hur den såg ut från början
+
+/*
+CREATE TABLE low_stock_items (
+item_number INT PRIMARY KEY,
+name VARCHAR(255),
+stock INT,
+FOREIGN KEY (item_number) REFERENCES items(number)
+ON DELETE CASCADE 
+ON UPDATE CASCADE
+);
+
+DROP TRIGGER IF EXISTS after_item_insert;
+DROP TRIGGER IF EXISTS after_item_update;
+
+DELIMITER //
+
+CREATE TRIGGER after_item_insert
+AFTER INSERT ON items
+FOR EACH ROW
+BEGIN
+	IF NEW.stock BETWEEN 0 AND 4 THEN
+		INSERT INTO low_stock_items(item_number, name, stock) VALUES
+        (NEW.number, NEW.name, NEW.stock);
+	END IF;
+END //
+
+CREATE TRIGGER after_item_update
+AFTER UPDATE ON items
+FOR EACH ROW
+BEGIN
+	IF NEW.stock BETWEEN 0 AND 4 THEN
+		INSERT INTO low_stock_items(item_number, name, stock) VALUES
+        (NEW.number, NEW.name, NEW.stock)
+        ON DUPLICATE KEY UPDATE stock = NEW.stock;
+	ELSE
+		DELETE FROM low_stock_items -- Ta bort från tabellen om antalet inte längre är 0-4
+        WHERE item_number = NEW.number;
+	END IF;
+END //
+DELIMITER ;
+
+CALL insert_items('testvara med lågt antal', 3, 29); -- Testar att lägga till en vara med lågt antal
+*/
+#Q7 - Tabell för varor med lågt saldo och triggers som håller tabellen uppdaterad
+
+/*
+DROP PROCEDURE IF EXISTS show_order;
+
+DELIMITER //
+
+CREATE PROCEDURE show_order (in_order_id INT) -- Del A
+BEGIN
+	SELECT
+		order_item.item_number,
+        i.name,
+        order_item.quantity,
+        i.price,
+        (order_item.quantity * i.price) AS total_price
+	FROM orders_items order_item
+    JOIN items i ON order_item.item_number = i.number
+    WHERE order_item.order_number = in_order_id;
+END //
+
+CALL show_order(1);
+
+DROP FUNCTION IF EXISTS order_history;
+
+CREATE FUNCTION order_history (n_days INT) -- Del B
+RETURNS DECIMAL(10,2)
+DETERMINISTIC
+BEGIN
+	DECLARE total_price DECIMAL(10,2);
+    
+    SELECT COALESCE(SUM(oi.quantity * i.price), 0) INTO total_price -- Returnerar summan eller 0 om inget hittas
+    FROM orders_items oi
+    JOIN items i ON oi.item_number = i.number
+    JOIN orders o ON oi.order_number = o.number
+    WHERE o.created >= CURDATE() - INTERVAL n_days DAY;
+    
+    RETURN total_price;
+END //
+DELIMITER ;
+
+SELECT order_history(7);
+*/
+#Q8 - Procedure för att visa totala summan av varor i en order och function för att visa orderhistoriken för X antal dagar bakåt i tiden
+
+/*
+DROP FUNCTION IF EXISTS sales_per_employee;
+
+DELIMITER //
+
+CREATE FUNCTION sales_per_employee (in_id INT)
+RETURNS DECIMAL(10,2)
+DETERMINISTIC
+BEGIN
+	DECLARE total_sales DECIMAL(10,2);
+    
+    SELECT COALESCE(SUM(i.amount), 0) INTO total_sales
+    FROM invoices i 
+    JOIN orders o ON i.order_number = o.number
+    WHERE i.employee_id = in_id;
+    RETURN total_sales;
+END //
+DELIMITER ;
+    
+SELECT sales_per_employee(4);
+*/
+#Q9 - Fuction som räknar ut försäljningssumman för de ordrar en anställd är knuten till
+    
+/*
+DROP PROCEDURE IF EXISTS replace_employee;
+
+DELIMITER //
+
+CREATE PROCEDURE replace_employee (in_old_emp_id INT, in_new_emp_id INT)
+BEGIN
+	UPDATE invoices 
+    SET employee_id = in_new_emp_id
+    WHERE employee_id = in_old_emp_id;
+END //
+
+CALL replace_employee(2, 4);
+*/
+#Q10 - Enklare procedure som uppdaterar kontaktpersonen för en faktura
+
+/*
+DROP TRIGGER IF EXISTS update_salary_after_4_invoices;
+
+DELIMITER //
+
+CREATE TRIGGER update_salary_after_4_invoices
+AFTER INSERT ON invoices
+FOR EACH ROW
+BEGIN
+	DECLARE invoice_count INT;
+    
+    SELECT COUNT(*) INTO invoice_count
+    FROM invoices 
+    WHERE employee_id = NEW.employee_id;
+    
+    IF (invoice_count % 4 = 0) THEN
+		UPDATE employees 
+        SET salary = salary * 1.10
+        WHERE id = NEW.employee_id;
+	END IF;
+END //
+DELIMITER ;
+
+SELECT salary FROM employees WHERE id = 4; -- Nuvarande lön 31000kr
+CALL insert_invoices(2, 4, 200.00, 4); -- Skapar en ny faktura för att aktivera triggern
+SELECT salary FROM employees WHERE id = 4; -- Lön har ökat
+*/
+#Q11 - Trigger som höjer en anställds lön med 10% vid var fjärde faktura som den anställda ansvarar för.
+
+/*
+DROP TABLE IF EXISTS employees_invoices; -- Materialiserad vy där information om anställda och deras fakturor sammanställs
+
+CREATE TABLE employees_invoices AS SELECT 
+i.employee_id,
+COUNT(*) AS invoice_count, 
+SUM(i.amount) AS total_amount, 
+e.name AS employee_name,
+e.phone
+FROM invoices i
+JOIN employees e ON e.id = i.employee_id
+GROUP BY i.employee_id;
+
+DROP TRIGGER IF EXISTS update_materialized_view;
+
+DELIMITER //
+
+CREATE TRIGGER update_materialized_view -- Trigger som uppdaterar den materialiserade vyn när en ny faktura skapas
+AFTER INSERT ON invoices
+FOR EACH ROW
+BEGIN
+	INSERT INTO employees_invoices (employee_id, invoice_count, total_amount, employee_name, phone)
+    SELECT
+		NEW.employee_id,
+        1, 
+        NEW.amount, 
+        e.name, 
+        e.phone
+		FROM employees e
+		WHERE e.id = NEW.employee_id
+		ON DUPLICATE KEY UPDATE 
+        invoice_count = invoice_count + 1,
+        total_amount = total_amount + NEW.amount;
+END //
+DELIMITER ;
+
+CALL insert_invoices(4, 8, 400.00, 2); -- En till testfaktura för att aktivera triggern
+*/
+#Q12 - Materialiserad vy med trigger. Visar bland annat antal fakturor och den totala summan för de fakturor som en anställd är kopplad till.
+    
